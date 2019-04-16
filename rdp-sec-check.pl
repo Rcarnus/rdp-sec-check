@@ -47,15 +47,25 @@ $rdp_neg_type{"01"} = "TYPE_RDP_NEG_REQ";
 $rdp_neg_type{"02"} = "TYPE_RDP_NEG_RSP";
 $rdp_neg_type{"03"} = "TYPE_RDP_NEG_FAILURE";
 
+my %rdp_neg_flags;
+$rdp_neg_flags{"01"} = "RESTRICTED_ADMIN_MODE_REQUIRED";
+$rdp_neg_flags{"02"} = "REDIRECTED_AUTHENTICATION_MODE_REQUIRED";
+$rdp_neg_flags{"03"} = "CORRELATION_INFO_PRESENT";
+
 my %rdp_neg_rsp_flags;
 $rdp_neg_rsp_flags{"00"} = "NO_FLAGS_SET";
 $rdp_neg_rsp_flags{"01"} = "EXTENDED_CLIENT_DATA_SUPPORTED";
 $rdp_neg_rsp_flags{"02"} = "DYNVC_GFX_PROTOCOL_SUPPORTED";
+$rdp_neg_rsp_flags{"04"} = "NEGRSP_FLAG_RESERVED";
+$rdp_neg_rsp_flags{"08"} = "RESTRICTED_ADMIN_MODE_SUPPORTED";
+$rdp_neg_rsp_flags{"10"} = "REDIRECTED_AUTHENTICATION_MODE_SUPPORTED";
 
 my %rdp_neg_protocol;
 $rdp_neg_protocol{"00"} = "PROTOCOL_RDP";
 $rdp_neg_protocol{"01"} = "PROTOCOL_SSL";
 $rdp_neg_protocol{"02"} = "PROTOCOL_HYBRID";
+$rdp_neg_protocol{"04"} = "PROTOCOL_RDSTLS";
+$rdp_neg_protocol{"08"} = "PROTOCOL_HYBRID_EX";
 
 my %rdp_neg_failure_code;
 $rdp_neg_failure_code{"01"} = "SSL_REQUIRED_BY_SERVER";
@@ -281,6 +291,19 @@ sub scan_host {
 			if ($rdp_neg_protocol{sprintf("%02x", ord($response[15]))} eq "PROTOCOL_HYBRID") {
 				print "Supported\n";
 				$config{"protocols"}{"PROTOCOL_HYBRID"} = 1;
+                print "[-] Checking flags as part of CredSSP Security (PROTOCOL_HYBRID)\n";
+                if ($rdp_neg_rsp_flags{sprintf("%02x", ord($response[12]) & 8)} eq "RESTRICTED_ADMIN_MODE_SUPPORTED") {
+                    $config{"flags"}{"RESTRICTED_ADMIN_MODE_SUPPORTED"} = 1;
+                }
+                else{
+                    $config{"flags"}{"RESTRICTED_ADMIN_MODE_SUPPORTED"} = 0;
+                }
+                #if ($rdp_neg_rsp_flags{sprintf("%02x", ord($response[12]) & 10)} eq "REDIRECTED_AUTHENTICATION_MODE_SUPPORTED") {
+                #    print "Redirected authentication mode supported"
+                #}
+                #else{
+                #    print "Redirected authentication mode not supported"
+                #}
 			} else {
 				printf "Not supported.  Negotiated %s\n", $rdp_neg_protocol{sprintf("%02x", ord($response[15]))};
 			}
@@ -291,7 +314,8 @@ sub scan_host {
 	} else {
 		print "Not supported - unexpected response\n";
 		$config{"protocols"}{"PROTOCOL_HYBRID"} = 0;
-	} 
+	}
+
 	print "\n";
 	print "[+] Checking RDP Security Layer\n\n";
 	foreach my $enc_hex (qw(00 01 02 08 10)) {
@@ -375,6 +399,15 @@ sub scan_host {
 	foreach my $encryption_method (sort keys(%encryption_method)) {
 		printf "[-] $ip:$port supports %-25s: %s\n", $encryption_method{$encryption_method}, (defined($config{"encryption_method"}{$encryption_method{$encryption_method}}) and $config{"encryption_method"}{$encryption_method{$encryption_method}}) ? "TRUE" : "FALSE";
 	}
+
+    print "\n";
+    print "[+] Summary of CredSSP security configuration\n\n";
+    if ($config{"flags"}{"RESTRICTED_ADMIN_MODE_SUPPORTED"}) {
+        printf "[-] $ip:$port restricted admin mode supported\n";
+    }
+    else {
+        printf "[-] $ip:$port restricted admin mode not supported\n";
+    }
 
 	print "\n";
 	print "[+] Summary of security issues\n\n";
@@ -557,7 +590,7 @@ sub get_x224_connection_request {
 	push @packet_hex, qw(00 00); # x224Crq - src-ref
 	push @packet_hex, qw(00); # x224Crq - class
 	push @packet_hex, qw(01); # rdpNegData - type
-	push @packet_hex, qw(00); # rdpNegData - flags
+	push @packet_hex, qw(01); # rdpNegData - flags
 	push @packet_hex, qw(08 00); # rdpNegData - length
 	push @packet_hex, ($sec, qw(00 00  00)); # rdpNegData - requestedProtocols.  bitmask, little endian: 0=standard rdp security, 1=TLSv1, 2=Hybrid (CredSSP)
 
